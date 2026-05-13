@@ -9,28 +9,26 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
-def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
-    backup = pd.concat(
-        [pd.read_excel(io.BytesIO(b), engine='xlrd') for b in backup_bytes_list],
-        ignore_index=True,
-    )
-    asin_cat = pd.read_excel(io.BytesIO(asin_bytes), engine='xlrd')
-
+def process_one(backup_bytes: bytes, asin_cat: pd.DataFrame) -> pd.DataFrame:
+    backup = pd.read_excel(io.BytesIO(backup_bytes), engine='xlrd')
     agg = backup.groupby('Asin').agg(
         Product_Name=('Title', 'first'),
         总金额=('Net Sales', 'sum'),
         台数=('Quantity', 'sum'),
         total_rebate=('Rebate In Agreement Currency', 'sum'),
     ).reset_index()
-
     agg['Discount in USD'] = (agg['total_rebate'] / agg['台数']).round(2)
     agg['台数'] = agg['台数'].astype(int)
     agg['总金额'] = agg['总金额'].round(2)
-
     merged = agg.merge(asin_cat, left_on='Asin', right_on='ASIN', how='left')
     result = merged[['Asin', 'ID', 'Product_Name', 'Discount in USD', '总金额', '台数']].copy()
     result.columns = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', '总金额', '台数']
-    result = result.sort_values('台数', ascending=False).reset_index(drop=True)
+    return result.sort_values('台数', ascending=False).reset_index(drop=True)
+
+
+def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
+    asin_cat = pd.read_excel(io.BytesIO(asin_bytes), engine='xlrd')
+    results  = [process_one(b, asin_cat) for b in backup_bytes_list]
 
     wb = Workbook()
     ws = wb.active
@@ -58,27 +56,31 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
         ws.column_dimensions[get_column_letter(ci)].width = w
     ws.row_dimensions[1].height = 22
 
-    for ri, row in result.iterrows():
-        excel_row = ri + 2
-        bg        = white_fill if ri % 2 == 0 else grey_fill
-        body_font = Font(name='Arial', size=9)
-        vals   = [row['Product ASIN'], row['ID'], row['Product Name'],
-                  row['Discount in USD'], row['总金额'], row['台数']]
-        aligns = [center, center, left, right, right, right]
-        for ci, (val, aln) in enumerate(zip(vals, aligns), 1):
-            cell           = ws.cell(row=excel_row, column=ci, value=val)
-            cell.font      = body_font
-            cell.fill      = bg
-            cell.alignment = aln
-            cell.border    = border
-        ws.cell(row=excel_row, column=4).number_format = '$#,##0.00'
-        ws.cell(row=excel_row, column=5).number_format = '#,##0.00'
-        ws.cell(row=excel_row, column=6).number_format = '#,##0'
-        ws.row_dimensions[excel_row].height = 18
+    current_row = 2
+    for block_idx, result in enumerate(results):
+        for ri, row in result.iterrows():
+            bg        = white_fill if ri % 2 == 0 else grey_fill
+            body_font = Font(name='Arial', size=9)
+            vals   = [row['Product ASIN'], row['ID'], row['Product Name'],
+                      row['Discount in USD'], row['总金额'], row['台数']]
+            aligns = [center, center, left, right, right, right]
+            for ci, (val, aln) in enumerate(zip(vals, aligns), 1):
+                cell           = ws.cell(row=current_row, column=ci, value=val)
+                cell.font      = body_font
+                cell.fill      = bg
+                cell.alignment = aln
+                cell.border    = border
+            ws.cell(row=current_row, column=4).number_format = '$#,##0.00'
+            ws.cell(row=current_row, column=5).number_format = '#,##0.00'
+            ws.cell(row=current_row, column=6).number_format = '#,##0'
+            ws.row_dimensions[current_row].height = 18
+            current_row += 1
+        if block_idx < len(results) - 1:
+            current_row += 1  # blank row between blocks
 
     buf = io.BytesIO()
     wb.save(buf)
-    return buf.getvalue(), len(result)
+    return buf.getvalue(), sum(len(r) for r in results)
 
 
 # ── UI ────────────────────────────────────────────────────────────────────────
