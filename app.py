@@ -21,11 +21,11 @@ def process_one(backup_bytes: bytes, asin_cat: pd.DataFrame) -> pd.DataFrame:
     agg['台数'] = agg['台数'].astype(int)
     agg['总金额'] = agg['总金额'].round(2)
     merged = agg.merge(asin_cat, left_on='Asin', right_on='ASIN', how='left')
-    result = merged[['Asin', 'ID', 'Product_Name', 'Discount in USD', '总金额', '台数']].copy()
-    result.columns = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', '总金额', '台数']
+    result = merged[['Asin', 'ID', '一级分类', 'Product_Name', 'Discount in USD', '总金额', '台数']].copy()
+    result.columns = ['Product ASIN', 'ID', 'Category', 'Product Name', 'Discount in USD', '总金额', '台数']
     result = result.sort_values('台数', ascending=False).reset_index(drop=True)
     result['Total Rebate'] = (result['Discount in USD'] * result['台数']).round(2)
-    return result[['Product ASIN', 'ID', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']]
+    return result[['Product ASIN', 'ID', 'Category', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']]
 
 
 def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
@@ -46,8 +46,8 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
     thin   = Side(style='thin', color='CCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    headers    = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']
-    col_widths = [16, 10, 65, 18, 18, 16, 10]
+    headers    = ['Product ASIN', 'ID', 'Category', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']
+    col_widths = [16, 10, 18, 55, 18, 18, 16, 10]
 
     for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=1, column=ci, value=h)
@@ -64,29 +64,29 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
         for ri, row in result.iterrows():
             bg        = white_fill if ri % 2 == 0 else grey_fill
             body_font = Font(name='Arial', size=9)
-            vals   = [row['Product ASIN'], row['ID'], row['Product Name'],
+            vals   = [row['Product ASIN'], row['ID'], row['Category'], row['Product Name'],
                       row['Discount in USD'], row['Total Rebate'], row['总金额'], row['台数']]
-            aligns = [center, center, left, right, right, right, right]
+            aligns = [center, center, center, left, right, right, right, right]
             for ci, (val, aln) in enumerate(zip(vals, aligns), 1):
                 cell           = ws.cell(row=current_row, column=ci, value=val)
                 cell.font      = body_font
                 cell.fill      = bg
                 cell.alignment = aln
                 cell.border    = border
-            ws.cell(row=current_row, column=4).number_format = '$#,##0.00'
             ws.cell(row=current_row, column=5).number_format = '$#,##0.00'
-            ws.cell(row=current_row, column=6).number_format = '#,##0.00'
-            ws.cell(row=current_row, column=7).number_format = '#,##0'
+            ws.cell(row=current_row, column=6).number_format = '$#,##0.00'
+            ws.cell(row=current_row, column=7).number_format = '#,##0.00'
+            ws.cell(row=current_row, column=8).number_format = '#,##0'
             ws.row_dimensions[current_row].height = 18
             current_row += 1
 
         # sum row after every block
         block_end = current_row - 1
         sum_font = Font(name='Arial', size=9, bold=True)
-        label_cell = ws.cell(row=current_row, column=4, value='Total Rebate:')
+        label_cell = ws.cell(row=current_row, column=5, value='Total Rebate:')
         label_cell.font = sum_font
         label_cell.alignment = right
-        sum_cell = ws.cell(row=current_row, column=5, value=f'=SUM(E{block_start}:E{block_end})')
+        sum_cell = ws.cell(row=current_row, column=6, value=f'=SUM(F{block_start}:F{block_end})')
         sum_cell.font = sum_font
         sum_cell.alignment = right
         sum_cell.number_format = '$#,##0.00'
