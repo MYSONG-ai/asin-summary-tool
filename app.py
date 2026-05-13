@@ -23,7 +23,9 @@ def process_one(backup_bytes: bytes, asin_cat: pd.DataFrame) -> pd.DataFrame:
     merged = agg.merge(asin_cat, left_on='Asin', right_on='ASIN', how='left')
     result = merged[['Asin', 'ID', 'Product_Name', 'Discount in USD', '总金额', '台数']].copy()
     result.columns = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', '总金额', '台数']
-    return result.sort_values('台数', ascending=False).reset_index(drop=True)
+    result = result.sort_values('台数', ascending=False).reset_index(drop=True)
+    result['Total Rebate'] = (result['Discount in USD'] * result['台数']).round(2)
+    return result[['Product ASIN', 'ID', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']]
 
 
 def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
@@ -44,8 +46,8 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
     thin   = Side(style='thin', color='CCCCCC')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-    headers    = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', '总金额', '台数']
-    col_widths = [16, 10, 65, 18, 16, 10]
+    headers    = ['Product ASIN', 'ID', 'Product Name', 'Discount in USD', 'Total Rebate', '总金额', '台数']
+    col_widths = [16, 10, 65, 18, 18, 16, 10]
 
     for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=1, column=ci, value=h)
@@ -62,8 +64,8 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
             bg        = white_fill if ri % 2 == 0 else grey_fill
             body_font = Font(name='Arial', size=9)
             vals   = [row['Product ASIN'], row['ID'], row['Product Name'],
-                      row['Discount in USD'], row['总金额'], row['台数']]
-            aligns = [center, center, left, right, right, right]
+                      row['Discount in USD'], row['Total Rebate'], row['总金额'], row['台数']]
+            aligns = [center, center, left, right, right, right, right]
             for ci, (val, aln) in enumerate(zip(vals, aligns), 1):
                 cell           = ws.cell(row=current_row, column=ci, value=val)
                 cell.font      = body_font
@@ -71,12 +73,25 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
                 cell.alignment = aln
                 cell.border    = border
             ws.cell(row=current_row, column=4).number_format = '$#,##0.00'
-            ws.cell(row=current_row, column=5).number_format = '#,##0.00'
-            ws.cell(row=current_row, column=6).number_format = '#,##0'
+            ws.cell(row=current_row, column=5).number_format = '$#,##0.00'
+            ws.cell(row=current_row, column=6).number_format = '#,##0.00'
+            ws.cell(row=current_row, column=7).number_format = '#,##0'
             ws.row_dimensions[current_row].height = 18
             current_row += 1
+
+        # sum row after every block
+        sum_font = Font(name='Arial', size=9, bold=True)
+        label_cell = ws.cell(row=current_row, column=4, value='Total Rebate:')
+        label_cell.font = sum_font
+        label_cell.alignment = right
+        sum_cell = ws.cell(row=current_row, column=5, value=round(result['Total Rebate'].sum(), 2))
+        sum_cell.font = sum_font
+        sum_cell.alignment = right
+        sum_cell.number_format = '$#,##0.00'
+        ws.row_dimensions[current_row].height = 18
+        current_row += 1  # blank gap after sum row (between blocks)
         if block_idx < len(results) - 1:
-            current_row += 1  # blank row between blocks
+            current_row += 1
 
     buf = io.BytesIO()
     wb.save(buf)
