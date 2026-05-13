@@ -9,8 +9,11 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 
-def build_excel(backup_bytes: bytes, asin_bytes: bytes) -> bytes:
-    backup = pd.read_excel(io.BytesIO(backup_bytes), engine='xlrd')
+def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
+    backup = pd.concat(
+        [pd.read_excel(io.BytesIO(b), engine='xlrd') for b in backup_bytes_list],
+        ignore_index=True,
+    )
     asin_cat = pd.read_excel(io.BytesIO(asin_bytes), engine='xlrd')
 
     agg = backup.groupby('Asin').agg(
@@ -84,7 +87,7 @@ DEFAULT_ASIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ASIN对
 
 st.title('ASIN Summary Generator')
 
-backup_file = st.file_uploader('Upload BackupReport (.xls)', type=['xls'])
+backup_files = st.file_uploader('Upload BackupReport (.xls)', type=['xls'], accept_multiple_files=True)
 
 asin_file = st.file_uploader(
     'Upload ASIN对应品类关系 (.xls)  —  optional, leave empty to use the default file',
@@ -96,11 +99,11 @@ if not asin_file:
     else:
         st.warning('Default ASIN对应品类关系.xls not found. Please upload the file.')
 
-if st.button('Generate Table', disabled=not backup_file or (not asin_file and not os.path.exists(DEFAULT_ASIN))):
+if st.button('Generate Table', disabled=not backup_files or (not asin_file and not os.path.exists(DEFAULT_ASIN))):
     with st.spinner('Processing...'):
         try:
             asin_bytes = asin_file.read() if asin_file else open(DEFAULT_ASIN, 'rb').read()
-            excel_bytes, row_count = build_excel(backup_file.read(), asin_bytes)
+            excel_bytes, row_count = build_excel([f.read() for f in backup_files], asin_bytes)
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             st.success(f'Done — {row_count} ASINs')
             st.download_button(
