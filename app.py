@@ -60,6 +60,7 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
 
     current_row = 2
     for block_idx, result in enumerate(results):
+        block_start = current_row
         for ri, row in result.iterrows():
             bg        = white_fill if ri % 2 == 0 else grey_fill
             body_font = Font(name='Arial', size=9)
@@ -80,11 +81,12 @@ def build_excel(backup_bytes_list: list, asin_bytes: bytes) -> bytes:
             current_row += 1
 
         # sum row after every block
+        block_end = current_row - 1
         sum_font = Font(name='Arial', size=9, bold=True)
         label_cell = ws.cell(row=current_row, column=4, value='Total Rebate:')
         label_cell.font = sum_font
         label_cell.alignment = right
-        sum_cell = ws.cell(row=current_row, column=5, value=round(result['Total Rebate'].sum(), 2))
+        sum_cell = ws.cell(row=current_row, column=5, value=f'=SUM(E{block_start}:E{block_end})')
         sum_cell.font = sum_font
         sum_cell.alignment = right
         sum_cell.number_format = '$#,##0.00'
